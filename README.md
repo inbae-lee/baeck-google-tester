@@ -92,9 +92,14 @@ Enabled once under **Settings > Pages > Source: Deploy from a branch
   reliable way to verify a JWT from Apps Script (no crypto libraries
   available). Fine at low volume; a high-traffic backend should verify
   locally against Google's public keys instead.
-- Cross-origin POST to Apps Script avoids CORS preflight by sending
-  `Content-Type: text/plain` (see [app.js](app.js)) — a documented quirk of
-  Apps Script Web Apps, not a general-purpose pattern.
+- Apps Script Web Apps never send an `Access-Control-Allow-Origin` header,
+  so a plain cross-origin `fetch()` to `BACKEND_VERIFY_URL` is always
+  blocked by CORS — there's no server config that fixes it. `app.js` works
+  around this by submitting the token via a hidden `<form>` to a hidden
+  `<iframe>` (form submissions aren't subject to CORS) and having the
+  backend respond with a small HTML page that posts the result back via
+  `postMessage`. This is Apps-Script-specific plumbing, not something to
+  carry over if you swap in a real backend later.
 
 ## Files that matter
 

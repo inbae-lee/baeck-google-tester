@@ -6,4 +6,5 @@ const GOOGLE_CLIENT_ID = "394344500550-rm3l29483m54c60fpuergmldevb2vb3k.apps.goo
 
 // Apps Script Web App /exec URL that verifies the ID token server-side.
 // See backend/Code.js and the README for how to deploy it.
-const BACKEND_VERIFY_URL = "YOUR_APPS_SCRIPT_WEB_APP_URL";
+const BACKEND_VERIFY_URL =
+  "https://script.google.com/macros/s/AKfycbxAk2Z5-rUXjxZHboI3_l40nNQrQGnJCVgkpnpYP1DnbQPYMLUwB07jdhzrlVQqCA4/exec";

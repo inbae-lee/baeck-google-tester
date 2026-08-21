@@ -6,22 +6,31 @@
 var ALLOWED_CLIENT_ID =
   "394344500550-rm3l29483m54c60fpuergmldevb2vb3k.apps.googleusercontent.com";
 
+// Apps Script Web Apps never send an Access-Control-Allow-Origin header, so
+// a cross-origin fetch() to this URL is always blocked by CORS — there is
+// no config that fixes that. The workaround: the frontend submits a hidden
+// <form> to a hidden <iframe> (form submissions aren't subject to CORS),
+// and this responds with a tiny HTML page whose script posts the result
+// back to the parent page via postMessage, which is unaffected by CORS.
 function doPost(e) {
-  var result = verifyCredential_(e);
-  return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(
-    ContentService.MimeType.JSON
-  );
+  var result = verifyCredential_(getCredential_(e));
+  var payload = JSON.stringify(JSON.stringify(result)).replace(/<\//g, "<\\/");
+  var html = "<script>parent.postMessage(" + payload + ', "*");</script>';
+  return HtmlService.createHtmlOutput(html);
 }
 
-function verifyCredential_(e) {
-  var body;
-  try {
-    body = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return { verified: false, error: "Invalid request body" };
+function getCredential_(e) {
+  if (e.parameter && e.parameter.credential) {
+    return e.parameter.credential;
   }
+  try {
+    return JSON.parse(e.postData.contents).credential;
+  } catch (err) {
+    return null;
+  }
+}
 
-  var idToken = body.credential;
+function verifyCredential_(idToken) {
   if (!idToken) {
     return { verified: false, error: "Missing credential" };
   }

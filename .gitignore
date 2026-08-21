@@ -1,1 +1,4 @@
 .DS_Store
+
+# clasp project link — contains your personal Apps Script scriptId
+backend/.clasp.json

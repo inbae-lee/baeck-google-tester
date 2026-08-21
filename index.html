@@ -13,6 +13,7 @@
         <h1>Google OAuth Tester</h1>
         <p class="muted">Sign in to test the flow.</p>
         <div id="g_id_signin"></div>
+        <p id="verify-error" class="warning hidden"></p>
       </div>
 
       <div id="signed-in" class="state hidden">
@@ -22,8 +23,8 @@
       </div>
 
       <p id="config-warning" class="warning hidden">
-        Set your Google OAuth Client ID in
-        <code>config.js</code> before this will work.
+        Set <code>GOOGLE_CLIENT_ID</code> and <code>BACKEND_VERIFY_URL</code>
+        in <code>config.js</code> before this will work.
       </p>
     </main>
 

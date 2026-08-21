@@ -3,12 +3,7 @@ const signedInEl = document.getElementById("signed-in");
 const userEmailEl = document.getElementById("user-email");
 const logoutButton = document.getElementById("logout-button");
 const configWarningEl = document.getElementById("config-warning");
-
-function decodeJwt(token) {
-  const payload = token.split(".")[1];
-  const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-  return JSON.parse(json);
-}
+const verifyErrorEl = document.getElementById("verify-error");
 
 function showSignedIn(profile) {
   userEmailEl.textContent = `Signed in as ${profile.email}`;
@@ -21,13 +16,44 @@ function showSignedOut() {
   signedOutEl.classList.remove("hidden");
 }
 
-function handleCredentialResponse(response) {
-  const profile = decodeJwt(response.credential);
-  showSignedIn(profile);
+function showVerifyError(message) {
+  verifyErrorEl.textContent = message;
+  verifyErrorEl.classList.remove("hidden");
+}
+
+// The GIS callback hands us an ID token straight from Google, but nothing
+// on this page has checked it yet — that's what the backend call below is
+// for. We only treat the user as signed in once the backend confirms the
+// token is genuine and was issued for this app.
+async function handleCredentialResponse(response) {
+  verifyErrorEl.classList.add("hidden");
+
+  try {
+    const res = await fetch(BACKEND_VERIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ credential: response.credential }),
+    });
+    const result = await res.json();
+
+    if (!result.verified) {
+      showVerifyError(result.error || "Verification failed");
+      return;
+    }
+
+    showSignedIn(result);
+  } catch (err) {
+    showVerifyError("Could not reach the verification backend");
+  }
 }
 
 function init() {
-  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith("YOUR_")) {
+  if (
+    !GOOGLE_CLIENT_ID ||
+    GOOGLE_CLIENT_ID.startsWith("YOUR_") ||
+    !BACKEND_VERIFY_URL ||
+    BACKEND_VERIFY_URL.startsWith("YOUR_")
+  ) {
     configWarningEl.classList.remove("hidden");
     return;
   }

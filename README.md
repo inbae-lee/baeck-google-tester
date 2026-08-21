@@ -1,20 +1,25 @@
 # baeck-google-tester
 
-Minimal static page for exercising a Google OAuth login/logout loop. Sign in
-with Google, see a "Success!" message, log out, repeat. Intended as a
-template for other projects — `config.js` + `app.js` is the whole thing you
-copy forward.
+Minimal page for exercising a Google OAuth login/logout loop, with the ID
+token actually verified server-side. Sign in with Google, see a "Success!"
+message, log out, repeat. Intended as a template for other projects — the
+pieces below are what you copy forward.
 
-Stack: plain HTML/CSS/JS, no build step, using
-[Google Identity Services](https://developers.google.com/identity/gsi/web)
-(GIS) for client-side sign-in. No backend, no client secret — the client ID
-is public by design. Hosted on GitHub Pages at
-[inbae-lee.github.io/baeck-google-tester](https://inbae-lee.github.io/baeck-google-tester).
+Stack:
 
-Note: the ID token returned by GIS is decoded in the browser for display
-only — it is **not cryptographically verified**. That's fine for smoke-testing
-that the OAuth flow itself works, but a real app needs a backend to verify
-the token before trusting the identity it claims.
+- **Frontend**: plain HTML/CSS/JS, no build step, using
+  [Google Identity Services](https://developers.google.com/identity/gsi/web)
+  (GIS) for sign-in. Hosted on GitHub Pages at
+  [inbae-lee.github.io/baeck-google-tester](https://inbae-lee.github.io/baeck-google-tester).
+- **Backend**: a [Google Apps Script](https://developers.google.com/apps-script)
+  Web App ([backend/Code.js](backend/Code.js)) that verifies the ID token
+  against Google's `tokeninfo` endpoint and checks it was issued for this
+  app's client ID, before the frontend trusts it. Free, no server to manage.
+
+Why a backend at all: the frontend alone can decode a JWT, but decoding
+isn't verifying — anyone can hand the page a forged token with an email
+field of their choosing. The backend call is what actually confirms the
+token came from Google and wasn't tampered with.
 
 ## 1. Google Cloud OAuth client
 
@@ -28,24 +33,70 @@ on your OAuth 2.0 Client ID (Web application type), add to
 GIS uses the client ID directly from the browser — no redirect URI or client
 secret needed.
 
-## 2. Configure
+## 2. Deploy the verify backend (Apps Script)
 
-Edit [config.js](config.js) and set `GOOGLE_CLIENT_ID` to your OAuth client
-ID.
+```bash
+npx @google/clasp login       # opens a browser, sign in with your Google account
+cd backend
+npx @google/clasp create --title "baeck-google-tester-verify" --type webapp --rootDir .
+npx @google/clasp push
+```
 
-## 3. Run it locally
+Edit [backend/Code.js](backend/Code.js) first and set `ALLOWED_CLIENT_ID` to
+the same OAuth client ID from step 1, then push again.
+
+Then deploy it as a Web App (clasp can't do this part — one-time step in the
+editor):
+
+```bash
+npx @google/clasp open
+```
+
+In the editor: **Deploy > New deployment > type: Web app** → Execute as:
+**Me**, Who has access: **Anyone** → **Deploy**. Copy the Web App URL
+(ends in `/exec`).
+
+## 3. Configure the frontend
+
+Edit [config.js](config.js):
+
+- `GOOGLE_CLIENT_ID` — the OAuth client ID from step 1
+- `BACKEND_VERIFY_URL` — the Apps Script Web App URL from step 2
+
+## 4. Run it locally
 
 ```bash
 npx serve .
 ```
 
-Open the printed URL. Click **Sign in with Google**, and you should see
-**Success!** plus your email, then a **Log out** button. Logging out and
-signing back in repeatedly is the point — it's the smoke test for the whole
-flow.
+Open the printed URL. Click **Sign in with Google** — the page sends the ID
+token to the Apps Script backend, waits for it to confirm the token is
+genuine, and only then shows **Success!** plus your verified email, then a
+**Log out** button. Logging out and signing back in repeatedly is the point
+— it's the smoke test for the whole flow, backend included.
 
-## Deploying
+## Deploying the frontend
 
-Push to `main`. GitHub Pages serves the repo root directly — no build step,
-no GitHub Action needed. Enable it once under **Settings > Pages > Source:
-Deploy from a branch (main / root)**.
+Push to `main`. GitHub Pages serves the repo root directly — no build step.
+Enabled once under **Settings > Pages > Source: Deploy from a branch
+(main / root)**.
+
+## Notes / limits
+
+- The Apps Script endpoint has to allow "Anyone" access to be callable from
+  a public page, so it's a public verify-only endpoint. It doesn't expose
+  anything beyond confirming/denying a token — but it's also unauthenticated
+  and rate-limited only by Apps Script's own quotas, not hardened against
+  abuse.
+- Verification calls Google's `tokeninfo` endpoint, which is the simplest
+  reliable way to verify a JWT from Apps Script (no crypto libraries
+  available). Fine at low volume; a high-traffic backend should verify
+  locally against Google's public keys instead.
+- Cross-origin POST to Apps Script avoids CORS preflight by sending
+  `Content-Type: text/plain` (see [app.js](app.js)) — a documented quirk of
+  Apps Script Web Apps, not a general-purpose pattern.
+
+## Files that matter
+
+- `index.html`, `style.css`, `app.js`, `config.js` — the frontend
+- `backend/Code.js`, `backend/appsscript.json` — the verify backend

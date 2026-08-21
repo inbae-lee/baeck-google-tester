@@ -11,11 +11,16 @@ var ALLOWED_CLIENT_ID =
 // no config that fixes that. The workaround: the frontend submits a hidden
 // <form> to a hidden <iframe> (form submissions aren't subject to CORS),
 // and this responds with a tiny HTML page whose script posts the result
-// back to the parent page via postMessage, which is unaffected by CORS.
+// back to the top-level page via postMessage, which is unaffected by CORS.
+// Apps Script serves this HTML inside a sandboxed iframe nested one level
+// deeper than the frontend's own iframe (script.google.com's wrapper page,
+// which itself embeds a googleusercontent.com sandbox frame that's where
+// this script actually runs) — so we target `top`, not `parent`, to reach
+// the frontend page directly instead of the intermediate wrapper.
 function doPost(e) {
   var result = verifyCredential_(getCredential_(e));
   var payload = JSON.stringify(JSON.stringify(result)).replace(/<\//g, "<\\/");
-  var html = "<script>parent.postMessage(" + payload + ', "*");</script>';
+  var html = "<script>top.postMessage(" + payload + ', "*");</script>';
   return HtmlService.createHtmlOutput(html);
 }
 

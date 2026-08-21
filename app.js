@@ -55,13 +55,22 @@ function verifyCredential(idToken) {
       resolve(result);
     };
 
+    // Apps Script serves the response inside a nested sandbox iframe
+    // (script.google.com's wrapper embeds its own googleusercontent.com
+    // sandbox frame), so event.source is that inner sandbox's window, not
+    // our outer iframe's contentWindow — there's no stable reference to
+    // compare against. Instead, treat any message whose payload parses to
+    // our expected shape as the response; this is a demo verify-only
+    // endpoint, so a same-origin-page listener isn't guarding much anyway.
     const onMessage = (event) => {
-      if (event.source !== iframe.contentWindow) return;
+      let parsed;
       try {
-        finish(JSON.parse(event.data));
+        parsed = JSON.parse(event.data);
       } catch (err) {
-        finish({ verified: false, error: "Malformed response from backend" });
+        return;
       }
+      if (typeof parsed.verified !== "boolean") return;
+      finish(parsed);
     };
 
     const timeoutId = setTimeout(

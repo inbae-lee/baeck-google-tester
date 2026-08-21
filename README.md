@@ -1,54 +1,51 @@
 # baeck-google-tester
 
-Minimal Next.js app for exercising a Google OAuth login/logout loop. The whole
-UI is one page: a "Sign in with Google" button, and once authenticated, a
-"Success!" message plus a "Log out" button. Intended as a template for other
-projects — the auth wiring here (`auth.ts`, the API route, `.env.local`) is
-what you copy forward.
+Minimal static page for exercising a Google OAuth login/logout loop. Sign in
+with Google, see a "Success!" message, log out, repeat. Intended as a
+template for other projects — `config.js` + `app.js` is the whole thing you
+copy forward.
 
-Stack: Next.js (App Router) + [Auth.js / NextAuth v5](https://authjs.dev) +
-Google provider. Auth.js redirects to Google's hosted OAuth consent screen
-and back — no client-side Google SDK involved, so there's a real
-server-verified session on every load.
+Stack: plain HTML/CSS/JS, no build step, using
+[Google Identity Services](https://developers.google.com/identity/gsi/web)
+(GIS) for client-side sign-in. No backend, no client secret — the client ID
+is public by design. Hosted on GitHub Pages at
+[inbae-lee.github.io/baeck-google-tester](https://inbae-lee.github.io/baeck-google-tester).
+
+Note: the ID token returned by GIS is decoded in the browser for display
+only — it is **not cryptographically verified**. That's fine for smoke-testing
+that the OAuth flow itself works, but a real app needs a backend to verify
+the token before trusting the identity it claims.
 
 ## 1. Google Cloud OAuth client
 
 In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-on your OAuth 2.0 Client ID (Web application type), add these to
-**Authorized redirect URIs**:
+on your OAuth 2.0 Client ID (Web application type), add to
+**Authorized JavaScript origins**:
 
-- `http://localhost:3000/api/auth/callback/google` (local dev)
-- `https://<your-deployed-domain>/api/auth/callback/google` (if/when deployed)
+- `https://inbae-lee.github.io` (GitHub Pages)
+- `http://localhost:3000` (local dev)
 
-Grab the Client ID and Client Secret for the next step.
+GIS uses the client ID directly from the browser — no redirect URI or client
+secret needed.
 
-## 2. Environment variables
+## 2. Configure
 
-```bash
-cp .env.local.example .env.local
-```
+Edit [config.js](config.js) and set `GOOGLE_CLIENT_ID` to your OAuth client
+ID.
 
-Fill in:
-
-- `AUTH_GOOGLE_ID` — Client ID from step 1
-- `AUTH_GOOGLE_SECRET` — Client Secret from step 1
-- `AUTH_SECRET` — already generated for you in `.env.local`; regenerate with
-  `openssl rand -base64 33` if you want a fresh one
-
-## 3. Run it
+## 3. Run it locally
 
 ```bash
-npm install
-npm run dev
+npx serve .
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Click **Sign in with
-Google**, complete the consent screen, and you should land back on the page
-showing **Success!** and a **Log out** button. Logging out and signing back
-in repeatedly is the point — it's the smoke test for the whole flow.
+Open the printed URL. Click **Sign in with Google**, and you should see
+**Success!** plus your email, then a **Log out** button. Logging out and
+signing back in repeatedly is the point — it's the smoke test for the whole
+flow.
 
-## Files that matter
+## Deploying
 
-- `auth.ts` — Auth.js config (Google provider)
-- `app/api/auth/[...nextauth]/route.ts` — auth API route handlers
-- `app/page.tsx` — the single page, gated on `auth()`
+Push to `main`. GitHub Pages serves the repo root directly — no build step,
+no GitHub Action needed. Enable it once under **Settings > Pages > Source:
+Deploy from a branch (main / root)**.

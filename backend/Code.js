@@ -6,33 +6,44 @@
 var ALLOWED_CLIENT_ID =
   "394344500550-rm3l29483m54c60fpuergmldevb2vb3k.apps.googleusercontent.com";
 
-// Apps Script Web Apps never send an Access-Control-Allow-Origin header, so
-// a cross-origin fetch() to this URL is always blocked by CORS — there is
-// no config that fixes that. The workaround: the frontend submits a hidden
-// <form> to a hidden <iframe> (form submissions aren't subject to CORS),
-// and this responds with a tiny HTML page whose script posts the result
-// back to the top-level page via postMessage, which is unaffected by CORS.
-// Apps Script serves this HTML inside a sandboxed iframe nested one level
-// deeper than the frontend's own iframe (script.google.com's wrapper page,
-// which itself embeds a googleusercontent.com sandbox frame that's where
-// this script actually runs) — so we target `top`, not `parent`, to reach
-// the frontend page directly instead of the intermediate wrapper.
+var CACHE_TTL_SECONDS = 60;
+
+// Apps Script Web Apps have no way to send CORS headers, and HtmlService
+// responses (tried first) turned out to run inside a sandboxed frame whose
+// `top` is isolated from the page that embeds it — there's no reliable way
+// to hand a result back through either of those channels. JSONP sidesteps
+// both: a <script src> tag isn't subject to CORS or sandboxing at all.
+//
+// Flow: the frontend POSTs { credential, nonce } here (a hidden form, so
+// the token never touches a URL), doPost verifies it and caches the result
+// under that nonce, then the frontend loads
+// BACKEND_VERIFY_URL?nonce=...&callback=... as a <script> tag — doGet
+// looks up the cached result and calls back into the frontend with it.
 function doPost(e) {
-  var result = verifyCredential_(getCredential_(e));
-  var payload = JSON.stringify(JSON.stringify(result)).replace(/<\//g, "<\\/");
-  var html = "<script>top.postMessage(" + payload + ', "*");</script>';
-  return HtmlService.createHtmlOutput(html);
+  var nonce = e.parameter && e.parameter.nonce;
+  var result = verifyCredential_(e.parameter && e.parameter.credential);
+  if (nonce) {
+    CacheService.getScriptCache().put(nonce, JSON.stringify(result), CACHE_TTL_SECONDS);
+  }
+  return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
 }
 
-function getCredential_(e) {
-  if (e.parameter && e.parameter.credential) {
-    return e.parameter.credential;
+function doGet(e) {
+  var nonce = e.parameter && e.parameter.nonce;
+  var callback = (e.parameter && e.parameter.callback) || "verifyCallback";
+  var cached = nonce && CacheService.getScriptCache().get(nonce);
+  var result = cached
+    ? JSON.parse(cached)
+    : { verified: false, pending: true };
+
+  if (cached) {
+    CacheService.getScriptCache().remove(nonce); // one-time read
   }
-  try {
-    return JSON.parse(e.postData.contents).credential;
-  } catch (err) {
-    return null;
-  }
+
+  var body = callback + "(" + JSON.stringify(result) + ");";
+  return ContentService.createTextOutput(body).setMimeType(
+    ContentService.MimeType.JAVASCRIPT
+  );
 }
 
 function verifyCredential_(idToken) {

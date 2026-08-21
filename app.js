@@ -21,64 +21,87 @@ function showVerifyError(message) {
   verifyErrorEl.classList.remove("hidden");
 }
 
-// Apps Script Web Apps never send CORS headers, so fetch() to
-// BACKEND_VERIFY_URL is always blocked cross-origin. Instead, submit the
-// token via a hidden form to a hidden iframe (form submissions aren't
-// subject to CORS) and wait for the backend's response page to post the
-// result back via postMessage.
+// Apps Script Web Apps never send CORS headers, and their HtmlService
+// responses run inside a sandboxed frame that turns out to be isolated
+// from the embedding page (no reliable way to message back out of it
+// either — see backend/Code.js for the full story). JSONP sidesteps both
+// problems: a <script src> tag isn't subject to CORS or sandboxing.
+//
+// Flow: POST { credential, nonce } via a hidden form (so the token itself
+// never touches a URL) and wait for that hidden iframe to finish loading —
+// that's confirmation the backend has processed it and cached a result.
+// Then fetch the result via a JSONP <script> tag keyed by that nonce (a
+// random, meaningless-on-its-own value, safe to put in a URL).
 function verifyCredential(idToken) {
   return new Promise((resolve) => {
-    const frameName = `verify-frame-${Date.now()}`;
+    const nonce = crypto.randomUUID();
+    let settled = false;
+    let pollTimeoutId;
+    let script;
+
+    const cleanup = () => {
+      clearTimeout(overallTimeoutId);
+      clearTimeout(pollTimeoutId);
+      delete window[callbackName];
+      form.remove();
+      iframe.remove();
+      if (script) script.remove();
+    };
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    const callbackName = `__verifyCallback_${nonce.replace(/-/g, "")}`;
+    window[callbackName] = (result) => {
+      if (result && result.pending) {
+        pollTimeoutId = setTimeout(poll, 400);
+        return;
+      }
+      finish(result);
+    };
+
+    function poll() {
+      if (script) script.remove();
+      script = document.createElement("script");
+      script.src = `${BACKEND_VERIFY_URL}?nonce=${encodeURIComponent(
+        nonce
+      )}&callback=${callbackName}`;
+      script.onerror = () =>
+        finish({ verified: false, error: "Could not reach verification backend" });
+      document.body.appendChild(script);
+    }
+
+    const overallTimeoutId = setTimeout(
+      () => finish({ verified: false, error: "Verification timed out" }),
+      10000
+    );
+
+    const frameName = `verify-post-frame-${Date.now()}`;
     const iframe = document.createElement("iframe");
     iframe.name = frameName;
     iframe.style.display = "none";
+    iframe.addEventListener("load", poll, { once: true });
 
     const form = document.createElement("form");
     form.method = "POST";
     form.action = BACKEND_VERIFY_URL;
     form.target = frameName;
+    form.style.display = "none";
 
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "credential";
-    input.value = idToken;
-    form.appendChild(input);
-
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      window.removeEventListener("message", onMessage);
-      clearTimeout(timeoutId);
-      form.remove();
-      iframe.remove();
-      resolve(result);
+    const addField = (name, value) => {
+      const el = document.createElement("input");
+      el.type = "hidden";
+      el.name = name;
+      el.value = value;
+      form.appendChild(el);
     };
+    addField("credential", idToken);
+    addField("nonce", nonce);
 
-    // Apps Script serves the response inside a nested sandbox iframe
-    // (script.google.com's wrapper embeds its own googleusercontent.com
-    // sandbox frame), so event.source is that inner sandbox's window, not
-    // our outer iframe's contentWindow — there's no stable reference to
-    // compare against. Instead, treat any message whose payload parses to
-    // our expected shape as the response; this is a demo verify-only
-    // endpoint, so a same-origin-page listener isn't guarding much anyway.
-    const onMessage = (event) => {
-      let parsed;
-      try {
-        parsed = JSON.parse(event.data);
-      } catch (err) {
-        return;
-      }
-      if (typeof parsed.verified !== "boolean") return;
-      finish(parsed);
-    };
-
-    const timeoutId = setTimeout(
-      () => finish({ verified: false, error: "Verification timed out" }),
-      10000
-    );
-
-    window.addEventListener("message", onMessage);
     document.body.appendChild(iframe);
     document.body.appendChild(form);
     form.submit();

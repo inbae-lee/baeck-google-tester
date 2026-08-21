@@ -94,12 +94,23 @@ Enabled once under **Settings > Pages > Source: Deploy from a branch
   locally against Google's public keys instead.
 - Apps Script Web Apps never send an `Access-Control-Allow-Origin` header,
   so a plain cross-origin `fetch()` to `BACKEND_VERIFY_URL` is always
-  blocked by CORS — there's no server config that fixes it. `app.js` works
-  around this by submitting the token via a hidden `<form>` to a hidden
-  `<iframe>` (form submissions aren't subject to CORS) and having the
-  backend respond with a small HTML page that posts the result back via
-  `postMessage`. This is Apps-Script-specific plumbing, not something to
-  carry over if you swap in a real backend later.
+  blocked by CORS — there's no server config that fixes it. An `HtmlService`
+  response plus `postMessage` was the first attempt, but Apps Script serves
+  that inside a sandboxed frame whose `top` turned out to be isolated from
+  the embedding page too (almost certainly a Cross-Origin-Opener-Policy
+  boundary on Google's side) — verified live, not just theorized, and there
+  was no way to reach back out through it.
+
+  What actually works: `app.js` POSTs `{ credential, nonce }` via a hidden
+  `<form>` to a hidden `<iframe>` (form submissions aren't subject to CORS,
+  so the token itself never touches a URL), `doPost` verifies the token and
+  caches the result under that nonce, and once the iframe finishes loading
+  the frontend fetches the cached result via a JSONP `<script src>` tag
+  keyed by that nonce — script tags aren't subject to CORS or sandboxing
+  either. This is all Apps-Script-specific plumbing (see the comments in
+  `backend/Code.js` and `app.js`), not something to carry over if you swap
+  in a real backend later — a normal backend just sets CORS headers and
+  none of this is needed.
 
 ## Files that matter
 
